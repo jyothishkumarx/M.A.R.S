@@ -1,56 +1,39 @@
-// Import mongoose to define schema and models
 const mongoose = require("mongoose");
 
-
-// Define structure of the User document
-// This tells MongoDB what fields each user must have
 const UserSchema = new mongoose.Schema({
 
-    // Username for login
-    username: {
-
-        type: String,     // Data type is text
-        required: true,   // Field must be provided
-        unique: true      // No duplicate usernames allowed
-
+    // Full name of user
+    name: {
+        type: String,
+        required: true
     },
 
-    // Email address of the user
+    // Email (used for login)
     email: {
-
         type: String,
         required: true,
         unique: true
-
     },
 
-    // Password will store bcrypt hashed password
-    password: {
-
+    // Hashed password (bcrypt output)
+    passwordHash: {
         type: String,
         required: true
-
     },
 
-    // Role determines permissions
-    // Example: admin or analyst
+    // Role-based access
     role: {
-
         type: String,
-        default: "analyst"
-
+        enum: ["admin", "user", "auditor"], // restrict values
+        default: "user"
     },
 
-    // Automatically store account creation time
+    // Timestamp
     createdAt: {
-
         type: Date,
         default: Date.now
-
     }
 
 });
 
-
-// Export model so it can be used by authentication logic
 module.exports = mongoose.model("User", UserSchema);

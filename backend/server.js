@@ -68,3 +68,18 @@ app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 
 });
+
+// Connect Routes to Server
+const authRoutes = require("./routes/authRoutes"); // Import authentication routes
+
+// Middleware
+app.use(express.json()); // Parse JSON bodies for all routes
+
+// Routes
+app.use("/api/auth", authRoutes); // Use auth routes for /api/auth endpoints
+
+
+const scanRoutes = require("./routes/scanRoutes"); 
+
+// Add below existing routes
+app.use("/api/scan", scanRoutes);
