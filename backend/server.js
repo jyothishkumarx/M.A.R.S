@@ -65,7 +65,7 @@ const PORT = process.env.PORT || 5000;
 // Start listening for incoming requests
 app.listen(PORT, () => {
 
-    console.log(`Server running on port ${PORT}`);
+    console.log(`Server running on port ${PORT}`); // Log message when server starts successfully
 
 });
 
@@ -81,5 +81,15 @@ app.use("/api/auth", authRoutes); // Use auth routes for /api/auth endpoints
 
 const scanRoutes = require("./routes/scanRoutes"); 
 
-// Add below existing routes
+// Use scan routes for /api/scan endpoints
 app.use("/api/scan", scanRoutes);
+
+// Redaction routes
+const redactRoutes = require("./routes/redactRoutes");
+
+app.use("/api/redact", redactRoutes); // Use redaction routes for /api/redact endpoints
+
+// Audit log routes
+const auditRoutes = require("./routes/auditRoutes");
+
+app.use("/api/audit", auditRoutes); // Use audit log routes for /api/audit endpoints
