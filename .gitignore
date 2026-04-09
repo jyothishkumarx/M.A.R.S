@@ -29,3 +29,6 @@ frontend/build/
 
 # Text files
 *.txt
+
+#environment variables
+.env
