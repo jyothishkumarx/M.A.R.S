@@ -1,51 +1,50 @@
-// Import required modules
+// ----------------------------------------
+// IMPORTS
+// ----------------------------------------
+
 const { exec } = require("child_process");
 const fs = require("fs");
-const path = require("path");
-
-// Import Audit Log model
 const AuditLog = require("../models/AuditLog");
 
-// Simple risk analysis function
+
+// ----------------------------------------
+// FILTER METADATA (STRICT)
+// ----------------------------------------
+
+const filterMetadata = (metadata) => {
+    return {
+        Location: {
+            GPSLatitude: metadata.GPSLatitude || null,
+            GPSLongitude: metadata.GPSLongitude || null
+        },
+        Author: {
+            Author: metadata.Author || null,
+            Creator: metadata.Creator || null
+        },
+        Device: {
+            Make: metadata.Make || null,
+            Model: metadata.Model || null
+        },
+        System: {
+            FileName: metadata.FileName || null,
+            Directory: metadata.Directory || null
+        }
+    };
+};
+
+
+// ----------------------------------------
+// RISK ANALYSIS
+// ----------------------------------------
+
 const analyzeRisk = (metadata) => {
     let riskScore = 0;
 
-    // CATEGORY 1: GPS Data (+40)
-    if (metadata.GPSLatitude || metadata.GPSLongitude) {
-        riskScore += 40;
-    }
+    if (metadata.GPSLatitude || metadata.GPSLongitude) riskScore += 40;
+    if (metadata.Author || metadata.Creator) riskScore += 25;
+    if (metadata.Make || metadata.Model) riskScore += 15;
+    if (metadata.FileName || metadata.Directory) riskScore += 20;
 
-    // CATEGORY 2: Author / User Info (+25)
-    if (
-        metadata.Author ||
-        metadata.Creator ||
-        metadata.OwnerName ||
-        metadata.UserName
-    ) {
-        riskScore += 25;
-    }
-
-    // CATEGORY 3: Device Info (+15)
-    if (
-        metadata.Make ||
-        metadata.Model ||
-        metadata.Software ||
-        metadata.DeviceManufacturer ||
-        metadata.DeviceModel
-    ) {
-        riskScore += 15;
-    }
-
-    // CATEGORY 4: File Path / System Info (+20)
-    if (
-        metadata.FileName ||
-        metadata.Directory ||
-        metadata.FilePath
-    ) {
-        riskScore += 20;
-    }
-
-    // Determine severity
     let severity = "Low";
     if (riskScore >= 60) severity = "High";
     else if (riskScore >= 30) severity = "Medium";
@@ -53,63 +52,82 @@ const analyzeRisk = (metadata) => {
     return { riskScore, severity };
 };
 
-// MAIN CONTROLLER (IMPORTANT: async added here)
+
+// ----------------------------------------
+// CONTROLLER
+// ----------------------------------------
+
 exports.scanFile = async (req, res) => {
     try {
-        const filePath = req.file.path;
 
-        // Run ExifTool
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: "No file uploaded"
+            });
+        }
+
+        if (!req.user || !req.user.id) {
+            return res.status(401).json({
+                success: false,
+                message: "User not authenticated"
+            });
+        }
+
+        const filePath = req.file.path;
+        const userId = req.user.id;
+
         exec(`exiftool -j "${filePath}"`, async (error, stdout) => {
 
-            if (error) {
-                return res.status(500).json({
-                    message: "Metadata extraction failed",
-                    error: error.message
+            try {
+                if (error) throw new Error("Metadata extraction failed");
+
+                const rawMetadata = JSON.parse(stdout)[0];
+
+                // FILTERED OUTPUT
+                const filteredMetadata = filterMetadata(rawMetadata);
+
+                // RISK ANALYSIS (based on RAW metadata)
+                const { riskScore, severity } = analyzeRisk(rawMetadata);
+
+                // SUMMARY (based on filtered keys)
+                const summary = Object.keys(filteredMetadata)
+                    .join(", ");
+
+                await AuditLog.create({
+                    userId,
+                    fileName: req.file.originalname,
+                    actionType: "scan",
+                    riskScore,
+                    severity,
+                    redactionApplied: false,
+                    metadataSummary: summary
                 });
+
+                res.json({
+                    success: true,
+                    message: "File scanned successfully",
+                    data: {
+                        metadata: filteredMetadata,
+                        riskScore,
+                        severity
+                    }
+                });
+
+            } catch (err) {
+                res.status(500).json({
+                    success: false,
+                    message: err.message
+                });
+            } finally {
+                if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
             }
-
-            // Parse metadata
-            const metadata = JSON.parse(stdout);
-            const cleanMetadata = metadata[0];
-
-            // Analyze risk
-            const riskAnalysis = analyzeRisk(cleanMetadata);
-
-            // Create short metadata summary
-            const summary = Object.keys(cleanMetadata)
-                .slice(0, 5)
-                .join(", ");
-
-            // TEMP userId (will replace later)
-            const userId = "000000000000000000000000";
-
-            // Save audit log
-            await AuditLog.create({
-                userId: userId,
-                fileName: req.file.originalname,
-                actionType: "scan",
-                riskScore: riskAnalysis.riskScore,
-                severity: riskAnalysis.severity,
-                redactionApplied: false,
-                metadataSummary: summary
-            });
-
-            // Send response
-            res.status(200).json({
-                message: "File scanned successfully",
-                metadata: cleanMetadata,
-                riskScore: riskAnalysis.riskScore,
-                severity: riskAnalysis.severity
-            });
-
-            // Delete uploaded file after processing
-            fs.unlinkSync(filePath);
         });
 
-    } catch (err) {
+    } catch {
         res.status(500).json({
-            message: "Server error",
-            error: err.message
+            success: false,
+            message: "Server error"
         });
     }
 };

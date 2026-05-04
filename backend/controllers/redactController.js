@@ -1,41 +1,47 @@
-// Import required modules
+// ----------------------------------------
+// IMPORTS
+// ----------------------------------------
+
 const { exec } = require("child_process");
 const fs = require("fs");
 const path = require("path");
-
-// Import Audit Log model
 const AuditLog = require("../models/AuditLog");
 
-// MAIN CONTROLLER
+
+// ----------------------------------------
+// CONTROLLER
+// ----------------------------------------
+
 exports.redactFile = async (req, res) => {
     try {
-        // Input file path (uploaded file)
-        const inputPath = req.file.path;
 
-        // Output file path (cleaned file)
-        const outputPath = path.join(
-            path.dirname(inputPath),
-            "cleaned_" + req.file.originalname
-        );
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: "No file uploaded"
+            });
+        }
 
-        // Run ExifTool to remove ALL metadata
-        exec(
-            `exiftool -all= "${inputPath}" -o "${outputPath}"`,
-            async (error) => {
+        if (!req.user || !req.user.id) {
+            return res.status(401).json({
+                success: false,
+                message: "User not authenticated"
+            });
+        }
 
-                if (error) {
-                    return res.status(500).json({
-                        message: "Metadata redaction failed",
-                        error: error.message
-                    });
-                }
+        const originalPath = req.file.path;
+        const ext = path.extname(originalPath);
+        const cleanedPath = originalPath.replace(ext, `_cleaned${ext}`);
+        const userId = req.user.id;
 
-                // TEMP userId (will be replaced later with JWT user)
-                const userId = "000000000000000000000000";
+        // CREATE CLEAN FILE (ORIGINAL UNTOUCHED)
+        exec(`exiftool -all= -o "${cleanedPath}" "${originalPath}"`, async (error) => {
 
-                // Save audit log for redaction
+            try {
+                if (error) throw new Error("Redaction failed");
+
                 await AuditLog.create({
-                    userId: userId,
+                    userId,
                     fileName: req.file.originalname,
                     actionType: "redact",
                     riskScore: 0,
@@ -44,28 +50,32 @@ exports.redactFile = async (req, res) => {
                     metadataSummary: "All metadata removed"
                 });
 
-                // Send cleaned file to client
-                res.download(outputPath, "cleaned_" + req.file.originalname, (err) => {
+                // SEND CLEAN FILE
+                res.download(cleanedPath, req.file.originalname, (err) => {
 
-                    // Cleanup files after sending
-                    try {
-                        fs.unlinkSync(inputPath);   // delete original upload
-                        fs.unlinkSync(outputPath);  // delete cleaned file
-                    } catch (cleanupError) {
-                        console.error("File cleanup error:", cleanupError.message);
-                    }
+                    // DELETE BOTH FILES
+                    if (fs.existsSync(originalPath)) fs.unlinkSync(originalPath);
+                    if (fs.existsSync(cleanedPath)) fs.unlinkSync(cleanedPath);
 
-                    if (err) {
-                        console.error("Download error:", err.message);
-                    }
+                    if (err) console.error(err);
+                });
+
+            } catch (err) {
+
+                if (fs.existsSync(originalPath)) fs.unlinkSync(originalPath);
+                if (fs.existsSync(cleanedPath)) fs.unlinkSync(cleanedPath);
+
+                res.status(500).json({
+                    success: false,
+                    message: err.message
                 });
             }
-        );
+        });
 
-    } catch (err) {
+    } catch {
         res.status(500).json({
-            message: "Server error",
-            error: err.message
+            success: false,
+            message: "Server error"
         });
     }
 };

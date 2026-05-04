@@ -3,8 +3,13 @@ const router = express.Router();
 
 const { redactFile } = require("../controllers/redactController");
 const upload = require("../middleware/uploadMiddleware");
+const { requireAuth } = require("../middleware/authMiddleware");
 
-// Redaction route
-router.post("/", upload.single("file"), redactFile);
+router.post(
+    "/",
+    requireAuth,
+    upload.single("file"),
+    redactFile
+);
 
 module.exports = router;

@@ -1,39 +1,30 @@
 const mongoose = require("mongoose");
 
-const UserSchema = new mongoose.Schema({
-
-    // Full name of user
+const userSchema = new mongoose.Schema(
+{
     name: {
         type: String,
         required: true
     },
 
-    // Email (used for login)
     email: {
         type: String,
         required: true,
         unique: true
     },
 
-    // Hashed password (bcrypt output)
     passwordHash: {
         type: String,
         required: true
     },
 
-    // Role-based access
     role: {
         type: String,
-        enum: ["admin", "user", "auditor"], // restrict values
+        enum: ["admin", "user", "auditor"],
         default: "user"
-    },
-
-    // Timestamp
-    createdAt: {
-        type: Date,
-        default: Date.now
     }
+},
+{ timestamps: true }
+);
 
-});
-
-module.exports = mongoose.model("User", UserSchema);
+module.exports = mongoose.model("User", userSchema);
